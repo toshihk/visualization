@@ -1,0 +1,93 @@
+{
+  "workforce_rows": 136408,
+  "layoffs_rows": 12000,
+  "bridge_rows": 216,
+  "years": [
+    2024,
+    2025,
+    2026
+  ],
+  "quarters": [
+    "Q1",
+    "Q2",
+    "Q3",
+    "Q4"
+  ],
+  "industries": [
+    "AI",
+    "Cloud",
+    "Cybersecurity",
+    "Data Analytics",
+    "E-Commerce",
+    "FinTech",
+    "Gaming",
+    "Social Media",
+    "Software"
+  ],
+  "regions": [
+    "Asia-Pacific",
+    "Europe",
+    "Middle East",
+    "North America",
+    "South America"
+  ],
+  "countries": [
+    "Canada",
+    "Germany",
+    "India",
+    "Singapore",
+    "UK",
+    "USA"
+  ],
+  "roles": [
+    "Cloud Engineer",
+    "Cybersecurity Analyst",
+    "Data Scientist",
+    "DevOps Engineer",
+    "Frontend Developer",
+    "ML Engineer",
+    "Product Manager",
+    "Software Engineer"
+  ],
+  "companies": [
+    "Adobe",
+    "Airbnb",
+    "Amazon",
+    "Anthropic",
+    "Apple",
+    "Databricks",
+    "Google",
+    "Intel",
+    "Meta",
+    "Microsoft",
+    "NVIDIA",
+    "Netflix",
+    "OpenAI",
+    "Oracle",
+    "Palantir",
+    "SAP",
+    "Salesforce",
+    "Spotify",
+    "Stripe",
+    "Uber"
+  ],
+  "company_sizes": [
+    "Big Tech",
+    "Enterprise",
+    "Mid-size",
+    "Startup"
+  ],
+  "hiring_trends": [
+    "Aggressive Hiring",
+    "Downsizing",
+    "Hiring Freeze",
+    "Moderate Hiring"
+  ],
+  "salary_min": 30000.0,
+  "salary_max": 217594.0,
+  "missing": {
+    "avg_salary": 1373,
+    "employee_satisfaction": 1397,
+    "revenue_growth": 1412
+  }
+}

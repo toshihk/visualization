@@ -1,0 +1,47 @@
+# Python environments
+.venv/
+venv/
+env/
+
+# Python caches and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Test and coverage output
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Generated application data
+processed/*
+!processed/*.csv
+!processed/*.json
+
+# Large source datasets kept locally
+data/*.csv
+
+# Environment variables and local secrets
+.env
+.env.*
+!.env.example
+
+# Packaging and build output
+build/
+dist/
+*.egg-info/
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs and runtime files
+*.log
+*.pid
