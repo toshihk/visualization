@@ -23,10 +23,14 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install dependencies into deployment package
+      - name: Build deployment package
         run: |
           python -m pip install --upgrade pip
-          pip install --no-cache-dir --target=".python_packages/lib/site-packages" -r requirements.txt
+          rm -rf deploy
+          mkdir -p deploy
+          cp -R app assets processed deploy/
+          cp requirements.txt startup.sh deploy/
+          pip install --no-cache-dir --target="deploy/.python_packages/lib/site-packages" -r requirements.txt
 
       - name: Check Azure publish profile secret
         env:
@@ -43,4 +47,4 @@ jobs:
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-          package: .
+          package: deploy
