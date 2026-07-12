@@ -30,7 +30,6 @@ COLORS = {
     "grid": "#e8edf4",
 }
 
-
 COUNTRY_TO_REGION = {
     "USA": "North America",
     "Canada": "North America",
