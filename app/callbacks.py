@@ -275,6 +275,7 @@ def register_callbacks(app, workforce_df, layoffs_df, bridge_df, profile):
         cloud_market = chart_market
         company_chip_text = f"Highlighted company: {selected_company} ×" if selected_company else ""
         company_chip_style = {} if selected_company else {"display": "none"}
-        segment_figure = disruption_ranking(country_context, "country", selected_values=countries) if disruption_scope == "country" else disruption_ranking(industry_context, "industry_norm", selected_values=industries)
         selected_company_context = market if (countries or industries) else None
+        segment_context = market if (countries or industries) else None
+        segment_figure = disruption_ranking(country_context, "country", selected_values=countries, selected_df=segment_context) if disruption_scope == "country" else disruption_ranking(industry_context, "industry_norm", selected_values=industries, selected_df=segment_context)
         return company_recommendation_vs_disruption(role_market, selected_company, selected_company_context), company_disruption_bars(chart_market, selected_company, selected_company_context), segment_figure, table.to_dict("records"), columns, signal_cloud(cloud_market), kpi_cards(items), chips, company_chip_text, company_chip_style

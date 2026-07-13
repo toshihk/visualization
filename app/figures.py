@@ -429,11 +429,39 @@ def opportunity_quadrant(df: pd.DataFrame, selected_industries: list[str] | None
     return _style(fig, "Opportunity versus disruption")
 
 
-def disruption_ranking(df: pd.DataFrame, dimension: str, selected_company: str | None = None, selected_values: list[str] | None = None) -> go.Figure:
-    scores = disruption_scores(df, dimension)
-    if scores.empty:
+def disruption_ranking(
+    df: pd.DataFrame,
+    dimension: str,
+    selected_company: str | None = None,
+    selected_values: list[str] | None = None,
+    selected_df: pd.DataFrame | None = None,
+) -> go.Figure:
+    all_scores = disruption_scores(df, dimension)
+    if all_scores.empty:
         return empty_figure("No AI disruption landscape matches these filters")
-    scores = scores.nlargest(20, "disruption_index").copy()
+    scores = all_scores.nlargest(20, "disruption_index").copy()
+    selected_scores = disruption_scores(selected_df, dimension) if selected_df is not None and not selected_df.empty else pd.DataFrame()
+    selected_lookup = selected_scores.set_index(dimension) if not selected_scores.empty else pd.DataFrame()
+    selected_set = set(selected_values or [])
+    selected_context_set = set(selected_lookup.index) if not selected_lookup.empty else set()
+    if selected_context_set:
+        scores = scores.set_index(dimension)
+        overlapping = scores.index.intersection(selected_lookup.index)
+        for column in ["disruption_index", "ai_replacement_risk", "ai_automation_impact", "ai_adoption_level", "open_roles"]:
+            scores.loc[overlapping, column] = selected_lookup.loc[overlapping, column]
+        missing_selected = sorted((selected_set or selected_context_set) - set(scores.index))
+        if missing_selected:
+            additions = []
+            base_lookup = all_scores.set_index(dimension)
+            for value in missing_selected:
+                if value in selected_lookup.index:
+                    additions.append(selected_lookup.loc[value])
+                elif value in base_lookup.index:
+                    additions.append(base_lookup.loc[value])
+            if additions:
+                scores = pd.concat([scores, pd.DataFrame(additions)], axis=0)
+        scores = scores.reset_index()
+    scores = scores.sort_values("disruption_index", ascending=False).head(24).copy()
     color_min = float(scores["disruption_index"].min())
     color_max = float(scores["disruption_index"].max())
     if color_min == color_max:
@@ -453,9 +481,11 @@ def disruption_ranking(df: pd.DataFrame, dimension: str, selected_company: str |
         custom_data=[dimension, "disruption_index", "ai_replacement_risk", "ai_automation_impact", "ai_adoption_level", "open_roles"],
     )
     label_positions = ["top center", "bottom center", "middle left", "middle right", "top left", "top right", "bottom left", "bottom right"]
-    selected = set(selected_values or [])
-    if selected:
-        point_opacity = [1.0 if value in selected else 0.18 for value in scores[dimension]]
+    highlight_active = bool(selected_set or selected_context_set or (selected_company and dimension == "company_name"))
+    if selected_set:
+        point_opacity = [1.0 if value in selected_set else 0.18 for value in scores[dimension]]
+    elif selected_context_set:
+        point_opacity = [1.0 if value in selected_context_set else 0.18 for value in scores[dimension]]
     elif selected_company and dimension == "company_name":
         point_opacity = [1.0 if company == selected_company else 0.18 for company in scores[dimension]]
     else:
