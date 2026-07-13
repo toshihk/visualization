@@ -38,27 +38,36 @@ def empty_figure(message: str) -> go.Figure:
     return fig
 
 
-def country_map(df: pd.DataFrame, metric: str) -> go.Figure:
+def country_map(df: pd.DataFrame, metric: str, selected_countries: list[str] | None = None) -> go.Figure:
     if df.empty:
         return empty_figure("No covered-market data matches these filters")
     aggregation = "sum" if metric in {"layoffs_count", "open_roles"} else "mean"
     grouped = df.groupby(["country", "region", "iso_alpha"], observed=True)[metric].agg(aggregation).reset_index(name="value")
-    fig = go.Figure(
-        go.Choropleth(
-            locations=grouped["iso_alpha"],
-            z=grouped["value"],
-            customdata=np.column_stack([grouped["country"], grouped["region"]]),
-            colorscale=[[0, "#dbeafe"], [0.45, "#60a5fa"], [1, COLORS["context"]]],
-            marker_line_color="white",
-            marker_line_width=0.8,
-            colorbar_title=METRIC_OPTIONS.get(metric, metric),
-            hovertemplate=(
-                "<b>%{customdata[0]}</b><br>Region: %{customdata[1]}<br>"
-                + METRIC_OPTIONS.get(metric, metric)
-                + ": %{z:,.1f}<extra></extra>"
-            ),
-        )
+    selected = set(selected_countries or [])
+    zmin, zmax = float(grouped["value"].min()), float(grouped["value"].max())
+    colorscale = [[0, "#dbeafe"], [0.45, "#60a5fa"], [1, COLORS["context"]]]
+    hovertemplate = (
+        "<b>%{customdata[0]}</b><br>Region: %{customdata[1]}<br>"
+        + METRIC_OPTIONS.get(metric, metric)
+        + ": %{z:,.1f}<extra></extra>"
     )
+    fig = go.Figure()
+    selectedpoints = [index for index, country in enumerate(grouped["country"]) if country in selected] if selected else None
+    fig.add_trace(go.Choropleth(
+        locations=grouped["iso_alpha"],
+        z=grouped["value"],
+        zmin=zmin,
+        zmax=zmax,
+        customdata=np.column_stack([grouped["country"], grouped["region"]]),
+        colorscale=colorscale,
+        marker_line_color="white",
+        marker_line_width=0.8,
+        colorbar_title=METRIC_OPTIONS.get(metric, metric),
+        selectedpoints=selectedpoints,
+        selected={"marker": {"opacity": 1.0}},
+        unselected={"marker": {"opacity": 0.18}},
+        hovertemplate=hovertemplate,
+    ))
     fig.update_geos(showframe=False, showcoastlines=True, coastlinecolor="#cbd5e1", projection_type="natural earth", bgcolor="rgba(0,0,0,0)", fitbounds="locations", lataxis_range=[-5, 75])
     fig.update_layout(dragmode=False, uirevision="locked-covered-markets")
     fig.add_annotation(text="Click a country to select it", x=0.01, y=0.01, xref="paper", yref="paper", showarrow=False, font={"size": 11, "color": COLORS["muted"]}, bgcolor="rgba(255,255,255,.85)")
@@ -67,41 +76,102 @@ def country_map(df: pd.DataFrame, metric: str) -> go.Figure:
     return fig
 
 
-def opportunity_timeline(df: pd.DataFrame) -> go.Figure:
+def opportunity_timeline(df: pd.DataFrame, selected_df: pd.DataFrame | None = None) -> go.Figure:
     market = quarterly_market(df)
     if market.empty:
         return empty_figure("No quarterly market data matches these filters")
     fig = make_subplots(specs=[[{"secondary_y": True}]])
-    fig.add_trace(go.Bar(x=market["period"], y=market["open_roles"], name="Open roles", marker={"color": "#d9f2e6", "line": {"color": COLORS["opportunity_dark"], "width": 2}}, opacity=0.95, customdata=market["dominant_hiring_trend"], hovertemplate="%{x}<br>Open roles: %{y:,.0f}<br>Dominant hiring trend: %{customdata}<extra></extra>"), secondary_y=False)
-    fig.add_trace(go.Scatter(x=market["period"], y=market["layoffs_count"], name="Layoffs", mode="lines+markers", line={"color": COLORS["context_dark"], "width": 4}, marker={"size": 9, "color": COLORS["context_dark"], "line": {"color": "white", "width": 1.5}}, hovertemplate="%{x}<br>People laid off: %{y:,.0f}<extra></extra>"), secondary_y=True)
+    use_brush = selected_df is not None and not selected_df.empty
+    if use_brush:
+        selected_market = quarterly_market(selected_df).set_index("period").reindex(market["period"]).fillna(0).reset_index()
+        other_open_roles = np.clip(market["open_roles"].to_numpy() - selected_market["open_roles"].to_numpy(), 0, None)
+        other_layoffs = np.clip(market["layoffs_count"].to_numpy() - selected_market["layoffs_count"].to_numpy(), 0, None)
+        fig.add_trace(go.Bar(
+            x=market["period"],
+            y=other_open_roles,
+            name="Other open roles",
+            marker={"color": "rgba(151, 163, 185, .28)", "line": {"color": "rgba(151, 163, 185, .38)", "width": 1}},
+            hovertemplate="%{x}<br>Other open roles: %{y:,.0f}<extra></extra>",
+        ), secondary_y=False)
+        fig.add_trace(go.Bar(
+            x=selected_market["period"],
+            y=selected_market["open_roles"],
+            name="Highlighted open roles",
+            marker={"color": "#a7f3d0", "line": {"color": COLORS["opportunity_dark"], "width": 2}},
+            hovertemplate="%{x}<br>Highlighted open roles: %{y:,.0f}<extra></extra>",
+        ), secondary_y=False)
+        fig.add_trace(go.Scatter(
+            x=market["period"],
+            y=other_layoffs,
+            name="Other layoffs",
+            mode="lines+markers",
+            line={"color": "rgba(151, 163, 185, .45)", "width": 3, "dash": "dot"},
+            marker={"size": 7, "color": "rgba(151, 163, 185, .45)", "line": {"color": "white", "width": 1}},
+            hovertemplate="%{x}<br>Other layoffs: %{y:,.0f}<extra></extra>",
+        ), secondary_y=True)
+        fig.add_trace(go.Scatter(
+            x=selected_market["period"],
+            y=selected_market["layoffs_count"],
+            name="Highlighted layoffs",
+            mode="lines+markers",
+            line={"color": COLORS["context_dark"], "width": 4},
+            marker={"size": 9, "color": COLORS["context_dark"], "line": {"color": "white", "width": 1.5}},
+            hovertemplate="%{x}<br>Highlighted layoffs: %{y:,.0f}<extra></extra>",
+        ), secondary_y=True)
+    else:
+        fig.add_trace(go.Bar(x=market["period"], y=market["open_roles"], name="Open roles", marker={"color": "#d9f2e6", "line": {"color": COLORS["opportunity_dark"], "width": 2}}, opacity=0.95, customdata=market["dominant_hiring_trend"], hovertemplate="%{x}<br>Open roles: %{y:,.0f}<br>Dominant hiring trend: %{customdata}<extra></extra>"), secondary_y=False)
+        fig.add_trace(go.Scatter(x=market["period"], y=market["layoffs_count"], name="Layoffs", mode="lines+markers", line={"color": COLORS["context_dark"], "width": 4}, marker={"size": 9, "color": COLORS["context_dark"], "line": {"color": "white", "width": 1.5}}, hovertemplate="%{x}<br>People laid off: %{y:,.0f}<extra></extra>"), secondary_y=True)
     fig.update_yaxes(title_text="Open roles", secondary_y=False)
     fig.update_yaxes(title_text="People laid off", secondary_y=True, showgrid=False)
     fig = _style(fig, "Hiring demand and layoffs over time")
-    fig.update_layout(height=350, showlegend=True, legend={"orientation": "h", "yanchor": "bottom", "y": 1.01, "xanchor": "right", "x": 1, "font": {"size": 10}}, hovermode="x unified", margin={"l": 58, "r": 58, "t": 65, "b": 55})
+    fig.update_layout(barmode="stack", height=350, showlegend=True, legend={"orientation": "h", "yanchor": "bottom", "y": 1.01, "xanchor": "right", "x": 1, "font": {"size": 10}}, hovermode="x unified", margin={"l": 58, "r": 58, "t": 65, "b": 55})
     return fig
 
 
-def open_role_momentum(df: pd.DataFrame) -> go.Figure:
+def open_role_momentum(df: pd.DataFrame, selected_df: pd.DataFrame | None = None) -> go.Figure:
     market = quarterly_market(df)
     if market.empty:
         return empty_figure("No open-role change data matches these filters")
     momentum_colors = [COLORS["muted"] if pd.isna(value) else COLORS["opportunity"] if value >= 0 else COLORS["disruption"] for value in market["open_role_change_pct"]]
-    fig = go.Figure(go.Bar(
-        x=market["period"],
-        y=market["open_role_change_pct"].fillna(0),
-        name="Open-role change",
-        marker_color=momentum_colors,
-        text=market["change_label"],
-        textposition="outside",
-        textfont={"size": 15, "color": COLORS["ink"]},
-        customdata=np.column_stack([market["open_role_change"], market["dominant_hiring_trend"]]),
-        hovertemplate="%{x}<br>Open-role change: %{customdata[0]:+,.0f} (%{y:+.1f}%)<br>Dominant hiring trend: %{customdata[1]}<extra></extra>",
-    ))
+    fig = go.Figure()
+    use_brush = selected_df is not None and not selected_df.empty
+    if use_brush:
+        fig.add_trace(go.Bar(
+            x=market["period"],
+            y=market["open_role_change_pct"].fillna(0),
+            name="All market",
+            marker={"color": "rgba(151, 163, 185, .35)", "line": {"color": "rgba(151, 163, 185, .45)", "width": 1}},
+            hovertemplate="%{x}<br>All-market change: %{y:+.1f}%<extra></extra>",
+        ))
+        selected_market = quarterly_market(selected_df).set_index("period").reindex(market["period"]).reset_index()
+        selected_colors = [COLORS["muted"] if pd.isna(value) else COLORS["opportunity"] if value >= 0 else COLORS["disruption"] for value in selected_market["open_role_change_pct"]]
+        fig.add_trace(go.Bar(
+            x=selected_market["period"],
+            y=selected_market["open_role_change_pct"].fillna(0),
+            name="Highlighted selection",
+            marker={"color": selected_colors, "line": {"color": "rgba(31,41,55,.24)", "width": 0.8}},
+            text=selected_market["open_role_change_pct"].map(lambda value: "" if pd.isna(value) else f"{value:+.1f}%"),
+            textposition="outside",
+            textfont={"size": 15, "color": COLORS["ink"]},
+            hovertemplate="%{x}<br>Highlighted change: %{y:+.1f}%<extra></extra>",
+        ))
+    else:
+        fig.add_trace(go.Bar(
+            x=market["period"],
+            y=market["open_role_change_pct"].fillna(0),
+            name="Open-role change",
+            marker_color=momentum_colors,
+            text=market["change_label"],
+            textposition="outside",
+            textfont={"size": 15, "color": COLORS["ink"]},
+            customdata=np.column_stack([market["open_role_change"], market["dominant_hiring_trend"]]),
+            hovertemplate="%{x}<br>Open-role change: %{customdata[0]:+,.0f} (%{y:+.1f}%)<br>Dominant hiring trend: %{customdata[1]}<extra></extra>",
+        ))
     fig.add_hline(y=0, line_color="#98a2b3", line_width=1)
     fig.update_xaxes(tickfont={"size": 12})
     fig.update_yaxes(title_text="Change in open roles (%)", ticksuffix="%", tickfont={"size": 12})
     fig = _style(fig, "Quarterly change in open roles")
-    fig.update_layout(height=350, showlegend=False, margin={"l": 58, "r": 20, "t": 65, "b": 55})
+    fig.update_layout(barmode="overlay" if use_brush else "relative", height=350, showlegend=use_brush, legend={"orientation": "h", "yanchor": "bottom", "y": 1.01, "xanchor": "right", "x": 1, "font": {"size": 9}}, margin={"l": 58, "r": 20, "t": 65, "b": 55})
     return fig
 
 
@@ -555,7 +625,12 @@ def country_disruption_lollipop(df: pd.DataFrame, selected_countries: list[str] 
     return fig
 
 
-def country_industry_heatmap(bridge: pd.DataFrame, metric: str, selected_countries: list[str] | None = None) -> go.Figure:
+def country_industry_heatmap(
+    bridge: pd.DataFrame,
+    metric: str,
+    selected_countries: list[str] | None = None,
+    selected_industries: list[str] | None = None,
+) -> go.Figure:
     if bridge.empty:
         return empty_figure("No connected benchmark data matches these filters")
     metric_labels = {
@@ -570,15 +645,21 @@ def country_industry_heatmap(bridge: pd.DataFrame, metric: str, selected_countri
     grouped = grouped.dropna(subset=[metric]).copy()
     if grouped.empty:
         return empty_figure("No valid benchmark observations match these filters")
-    countries = selected_countries or sorted(COUNTRY_TO_REGION)
+    selected_country_set = set(selected_countries or [])
+    selected_industry_set = set(selected_industries or [])
+    all_countries = sorted(COUNTRY_TO_REGION)
     country_lookup = pd.DataFrame(
-        [{"country": country, "region": COUNTRY_TO_REGION[country]} for country in countries if country in COUNTRY_TO_REGION]
+        [{"country": country, "region": COUNTRY_TO_REGION[country]} for country in all_countries if country in COUNTRY_TO_REGION]
     )
     grouped = grouped.merge(country_lookup, on="region", how="inner")
     if grouped.empty:
         return empty_figure("No country-linked regional benchmarks match these filters")
     order = grouped.groupby("industry_norm", observed=True)[metric].mean().sort_values(ascending=False).index.tolist()
+    if selected_industry_set:
+        order = [industry for industry in order if industry in selected_industry_set] + [industry for industry in order if industry not in selected_industry_set]
     countries = sorted(grouped["country"].dropna().unique())
+    if selected_country_set:
+        countries = [country for country in countries if country in selected_country_set] + [country for country in countries if country not in selected_country_set]
     value_matrix = grouped.pivot_table(index="industry_norm", columns="country", values=metric, aggfunc="mean").reindex(index=order, columns=countries)
     region_matrix = grouped.pivot_table(index="industry_norm", columns="country", values="region", aggfunc="first").reindex(index=order, columns=countries)
     value_labels = value_matrix.apply(
@@ -600,6 +681,24 @@ def country_industry_heatmap(bridge: pd.DataFrame, metric: str, selected_countri
         colorbar={"title": metric_label},
         hovertemplate="<b>%{y} · %{x}</b><br>" + metric_label + ": %{text}<br>Source region: %{customdata}<extra></extra>",
     ))
+    if selected_country_set or selected_industry_set:
+        highlight_cells = [
+            (country, industry)
+            for country in countries
+            for industry in order
+            if (not selected_country_set or country in selected_country_set)
+            and (not selected_industry_set or industry in selected_industry_set)
+            and pd.notna(value_matrix.loc[industry, country])
+        ]
+        if highlight_cells:
+            fig.add_trace(go.Scatter(
+                x=[country for country, _industry in highlight_cells],
+                y=[industry for _country, industry in highlight_cells],
+                mode="markers",
+                marker={"symbol": "square-open", "size": 25, "color": COLORS["ink"], "line": {"width": 2}},
+                hoverinfo="skip",
+                showlegend=False,
+            ))
     fig.update_yaxes(autorange="reversed", title_text="")
     fig.update_xaxes(title_text="Country", side="bottom")
     fig = _style(fig, "")
