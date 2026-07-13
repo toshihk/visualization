@@ -498,27 +498,50 @@ def disruption_ranking(df: pd.DataFrame, dimension: str, selected_company: str |
     return fig
 
 
-def company_recommendation_vs_disruption(df: pd.DataFrame, selected_company: str | None = None) -> go.Figure:
-    recommendation_rows = recommendation_scores(df)
-    if recommendation_rows.empty:
+def company_recommendation_vs_disruption(
+    df: pd.DataFrame,
+    selected_company: str | None = None,
+    selected_df: pd.DataFrame | None = None,
+) -> go.Figure:
+    def company_scores(source: pd.DataFrame) -> pd.DataFrame:
+        recommendation_rows = recommendation_scores(source)
+        if recommendation_rows.empty:
+            return pd.DataFrame()
+        company_rows = []
+        for company, group in recommendation_rows.groupby("company_name", observed=True):
+            sample_weights = group["open_roles"].clip(lower=0)
+            total_weight = float(sample_weights.sum())
+            weighted_mean = lambda column: float(np.average(group[column], weights=sample_weights)) if total_weight > 0 else float(group[column].mean())
+            company_rows.append({
+                "company_name": company,
+                "open_roles": total_weight,
+                "disruption_index": weighted_mean("disruption_index"),
+                "recommendation_score": weighted_mean("recommendation_score"),
+                "layoff_percentage": weighted_mean("layoff_percentage"),
+            })
+        return pd.DataFrame(company_rows)
+
+    scores = company_scores(df)
+    if scores.empty:
         return empty_figure("No company recommendation comparison matches these filters")
-    company_rows = []
-    for company, group in recommendation_rows.groupby("company_name", observed=True):
-        sample_weights = group["open_roles"].clip(lower=0)
-        total_weight = float(sample_weights.sum())
-        weighted_mean = lambda column: float(np.average(group[column], weights=sample_weights)) if total_weight > 0 else float(group[column].mean())
-        company_rows.append({
-            "company_name": company,
-            "open_roles": total_weight,
-            "disruption_index": weighted_mean("disruption_index"),
-            "recommendation_score": weighted_mean("recommendation_score"),
-            "layoff_percentage": weighted_mean("layoff_percentage"),
-        })
-    scores = pd.DataFrame(company_rows).sort_values("recommendation_score", ascending=False)
-    selected_opacity = [1.0 if not selected_company or company == selected_company else 0.18 for company in scores["company_name"]]
+    scores = scores.sort_values("recommendation_score", ascending=False)
+    selected_scores = company_scores(selected_df) if selected_df is not None and not selected_df.empty else pd.DataFrame()
+    selected_company_scores = selected_scores.set_index("company_name") if not selected_scores.empty else pd.DataFrame()
+    selected_companies = set(selected_company_scores.index) if not selected_company_scores.empty else set()
+    if selected_companies:
+        scores = scores.set_index("company_name")
+        for column in ["open_roles", "disruption_index", "recommendation_score", "layoff_percentage"]:
+            scores.loc[scores.index.intersection(selected_company_scores.index), column] = selected_company_scores[column]
+        scores = scores.reset_index()
+    highlight_active = bool(selected_company or selected_companies)
+    highlight_mask = [
+        (not selected_company or company == selected_company) and (not selected_companies or company in selected_companies)
+        for company in scores["company_name"]
+    ]
+    selected_opacity = [1.0 if not highlight_active or selected else 0.18 for selected in highlight_mask]
     fig = go.Figure()
-    for row in scores.itertuples(index=False):
-        alpha = 1.0 if not selected_company or row.company_name == selected_company else 0.18
+    for row, selected in zip(scores.itertuples(index=False), highlight_mask):
+        alpha = 1.0 if not highlight_active or selected else 0.18
         fig.add_trace(go.Scatter(
             x=[row.disruption_index, row.recommendation_score], y=[row.company_name, row.company_name],
             mode="lines", line={"color": f"rgba(152,162,179,{alpha})", "width": 4}, hoverinfo="skip", showlegend=False,
@@ -546,11 +569,28 @@ def company_recommendation_vs_disruption(df: pd.DataFrame, selected_company: str
     return fig
 
 
-def company_disruption_bars(df: pd.DataFrame, selected_company: str | None = None) -> go.Figure:
+def company_disruption_bars(
+    df: pd.DataFrame,
+    selected_company: str | None = None,
+    selected_df: pd.DataFrame | None = None,
+) -> go.Figure:
     scores = disruption_scores(df, "company_name")
     if scores.empty:
         return empty_figure("No company disruption comparison matches these filters")
     scores = scores.nlargest(20, "disruption_index").sort_values("disruption_index", ascending=False)
+    selected_scores = disruption_scores(selected_df, "company_name") if selected_df is not None and not selected_df.empty else pd.DataFrame()
+    selected_company_scores = selected_scores.set_index("company_name") if not selected_scores.empty else pd.DataFrame()
+    selected_companies = set(selected_company_scores.index) if not selected_company_scores.empty else set()
+    if selected_companies:
+        scores = scores.set_index("company_name")
+        for column in ["disruption_index", "ai_replacement_risk", "ai_automation_impact", "ai_adoption_level", "open_roles"]:
+            scores.loc[scores.index.intersection(selected_company_scores.index), column] = selected_company_scores[column]
+        scores = scores.reset_index()
+    highlight_active = bool(selected_company or selected_companies)
+    highlight_mask = [
+        (not selected_company or company == selected_company) and (not selected_companies or company in selected_companies)
+        for company in scores["company_name"]
+    ]
     score_min = float(scores["disruption_index"].min())
     score_max = float(scores["disruption_index"].max())
     score_padding = max((score_max - score_min) * 0.22, 3)
@@ -563,7 +603,7 @@ def company_disruption_bars(df: pd.DataFrame, selected_company: str | None = Non
             "color": scores["disruption_index"],
             "colorscale": [[0, COLORS["opportunity"]], [0.55, COLORS["transition"]], [1, COLORS["disruption"]]],
             "cmin": axis_min, "cmax": axis_max, "showscale": False,
-            "opacity": [1.0 if not selected_company or company == selected_company else 0.18 for company in scores["company_name"]],
+            "opacity": [1.0 if not highlight_active or selected else 0.18 for selected in highlight_mask],
             "line": {"color": "white", "width": 0.8},
         },
         customdata=np.column_stack([scores["ai_replacement_risk"], scores["ai_automation_impact"], scores["ai_adoption_level"], scores["open_roles"]]),

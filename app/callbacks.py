@@ -237,10 +237,11 @@ def register_callbacks(app, workforce_df, layoffs_df, bridge_df, profile):
         role = (journey or {}).get("selected_role")
         regions = sorted({COUNTRY_TO_REGION[c] for c in (countries or []) if c in COUNTRY_TO_REGION})
         market = filter_layoffs(layoffs_df, period_range=period_range, industries=industries, countries=countries, role=role)
-        role_market = filter_layoffs(layoffs_df, period_range=period_range, industries=industries, countries=countries)
-        country_context = filter_layoffs(layoffs_df, period_range=period_range, industries=industries, role=role)
-        industry_context = filter_layoffs(layoffs_df, period_range=period_range, countries=countries, role=role)
-        if selected_company and selected_company not in set(role_market["company_name"].unique()):
+        role_market = filter_layoffs(layoffs_df, period_range=period_range, role=role)
+        chart_market = filter_layoffs(layoffs_df, period_range=period_range)
+        country_context = filter_layoffs(layoffs_df, period_range=period_range, role=role)
+        industry_context = filter_layoffs(layoffs_df, period_range=period_range, role=role)
+        if selected_company and selected_company not in set(chart_market["company_name"].unique()):
             selected_company = None
         workforce = filter_workforce(workforce_df, period_range=period_range, industries=industries, regions=regions, salary_range=salary_range)
 
@@ -271,8 +272,9 @@ def register_callbacks(app, workforce_df, layoffs_df, bridge_df, profile):
                 chips.append(html.Span(f"{label}: {text}", className="selection-chip"))
         if role:
             chips.append(html.Span(f"Role: {role}", className="selection-chip role-chip"))
-        cloud_market = market[market["company_name"] == selected_company] if selected_company else market
+        cloud_market = chart_market
         company_chip_text = f"Highlighted company: {selected_company} ×" if selected_company else ""
         company_chip_style = {} if selected_company else {"display": "none"}
         segment_figure = disruption_ranking(country_context, "country", selected_values=countries) if disruption_scope == "country" else disruption_ranking(industry_context, "industry_norm", selected_values=industries)
-        return company_recommendation_vs_disruption(role_market, selected_company), company_disruption_bars(role_market, selected_company), segment_figure, table.to_dict("records"), columns, signal_cloud(cloud_market), kpi_cards(items), chips, company_chip_text, company_chip_style
+        selected_company_context = market if (countries or industries) else None
+        return company_recommendation_vs_disruption(role_market, selected_company, selected_company_context), company_disruption_bars(chart_market, selected_company, selected_company_context), segment_figure, table.to_dict("records"), columns, signal_cloud(cloud_market), kpi_cards(items), chips, company_chip_text, company_chip_style
