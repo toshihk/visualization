@@ -122,11 +122,14 @@ def register_callbacks(app, workforce_df, layoffs_df, bridge_df, profile):
     )
     def update_explore(period_range, industries, countries, map_metric, benchmark_view, selected_role):
         map_metric = map_metric or "open_roles"
+        timeline_range = [0, len(APP_PERIODS) - 2]
         market = filter_layoffs(layoffs_df, period_range=period_range)
         highlighted_market = filter_layoffs(layoffs_df, period_range=period_range, industries=industries, countries=countries, role=selected_role)
         highlight_active = bool((industries or []) or (countries or []) or selected_role)
+        period_brush_active = (period_range or timeline_range) != timeline_range
         kpi_market = highlighted_market if highlight_active else market
         bridge = filter_bridge(bridge_df, period_range=period_range)
+        timeline_market = filter_layoffs(layoffs_df, period_range=timeline_range)
         momentum = _role_momentum(kpi_market)
         leading_role = kpi_market.groupby("top_hiring_role", observed=True)["open_roles"].sum().idxmax() if not kpi_market.empty else "—"
         items = [
@@ -144,8 +147,8 @@ def register_callbacks(app, workforce_df, layoffs_df, bridge_df, profile):
             "layoff_risk_score": "Layoff risk",
         }
         benchmark_title = benchmark_labels.get(benchmark_view or "avg_salary", "Salary benchmark")
-        selected_context = highlighted_market if highlight_active else None
-        return country_map(market, map_metric, countries), map_title, opportunity_timeline(market, selected_context), open_role_momentum(market, selected_context), role_vs_industry(market, selected_role, industries), industry_layoffs_bar(market, industries), country_industry_heatmap(bridge, benchmark_view or "avg_salary", countries, industries), benchmark_title, kpi_cards(items)
+        selected_context = highlighted_market if highlight_active or period_brush_active else None
+        return country_map(market, map_metric, countries), map_title, opportunity_timeline(timeline_market, selected_context), open_role_momentum(timeline_market, selected_context), role_vs_industry(market, selected_role, industries), industry_layoffs_bar(market, industries), country_industry_heatmap(bridge, benchmark_view or "avg_salary", countries, industries), benchmark_title, kpi_cards(items)
 
     @app.callback(
         Output("journey-state", "data"),

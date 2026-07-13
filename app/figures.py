@@ -83,40 +83,44 @@ def opportunity_timeline(df: pd.DataFrame, selected_df: pd.DataFrame | None = No
     fig = make_subplots(specs=[[{"secondary_y": True}]])
     use_brush = selected_df is not None and not selected_df.empty
     if use_brush:
-        selected_market = quarterly_market(selected_df).set_index("period").reindex(market["period"]).fillna(0).reset_index()
-        other_open_roles = np.clip(market["open_roles"].to_numpy() - selected_market["open_roles"].to_numpy(), 0, None)
-        other_layoffs = np.clip(market["layoffs_count"].to_numpy() - selected_market["layoffs_count"].to_numpy(), 0, None)
+        selected_market = quarterly_market(selected_df).set_index("period").reindex(market["period"]).reset_index()
+        selected_open_roles = selected_market["open_roles"]
+        selected_layoffs = selected_market["layoffs_count"]
+        selected_open_roles_for_math = selected_open_roles.fillna(0)
+        selected_layoffs_for_math = selected_layoffs.fillna(0)
+        other_open_roles = np.clip(market["open_roles"].to_numpy() - selected_open_roles_for_math.to_numpy(), 0, None)
+        other_layoffs = np.clip(market["layoffs_count"].to_numpy() - selected_layoffs_for_math.to_numpy(), 0, None)
+        fig.add_trace(go.Bar(
+            x=selected_market["period"],
+            y=selected_open_roles,
+            name="Open roles",
+            marker={"color": "#a7f3d0", "line": {"color": COLORS["opportunity_dark"], "width": 2}},
+            hovertemplate="%{x}<br>Open roles: %{y:,.0f}<extra></extra>",
+        ), secondary_y=False)
         fig.add_trace(go.Bar(
             x=market["period"],
             y=other_open_roles,
-            name="Other open roles",
+            name="Open roles",
             marker={"color": "rgba(151, 163, 185, .28)", "line": {"color": "rgba(151, 163, 185, .38)", "width": 1}},
-            hovertemplate="%{x}<br>Other open roles: %{y:,.0f}<extra></extra>",
-        ), secondary_y=False)
-        fig.add_trace(go.Bar(
-            x=selected_market["period"],
-            y=selected_market["open_roles"],
-            name="Highlighted open roles",
-            marker={"color": "#a7f3d0", "line": {"color": COLORS["opportunity_dark"], "width": 2}},
-            hovertemplate="%{x}<br>Highlighted open roles: %{y:,.0f}<extra></extra>",
+            hovertemplate="%{x}<br>Open roles: %{y:,.0f}<extra></extra>",
         ), secondary_y=False)
         fig.add_trace(go.Scatter(
             x=market["period"],
             y=other_layoffs,
-            name="Other layoffs",
+            name="Layoffs",
             mode="lines+markers",
             line={"color": "rgba(151, 163, 185, .45)", "width": 3, "dash": "dot"},
             marker={"size": 7, "color": "rgba(151, 163, 185, .45)", "line": {"color": "white", "width": 1}},
-            hovertemplate="%{x}<br>Other layoffs: %{y:,.0f}<extra></extra>",
+            hovertemplate="%{x}<br>Layoffs: %{y:,.0f}<extra></extra>",
         ), secondary_y=True)
         fig.add_trace(go.Scatter(
             x=selected_market["period"],
-            y=selected_market["layoffs_count"],
-            name="Highlighted layoffs",
+            y=selected_layoffs,
+            name="Layoffs",
             mode="lines+markers",
             line={"color": COLORS["context_dark"], "width": 4},
             marker={"size": 9, "color": COLORS["context_dark"], "line": {"color": "white", "width": 1.5}},
-            hovertemplate="%{x}<br>Highlighted layoffs: %{y:,.0f}<extra></extra>",
+            hovertemplate="%{x}<br>Layoffs: %{y:,.0f}<extra></extra>",
         ), secondary_y=True)
     else:
         fig.add_trace(go.Bar(x=market["period"], y=market["open_roles"], name="Open roles", marker={"color": "#d9f2e6", "line": {"color": COLORS["opportunity_dark"], "width": 2}}, opacity=0.95, customdata=market["dominant_hiring_trend"], hovertemplate="%{x}<br>Open roles: %{y:,.0f}<br>Dominant hiring trend: %{customdata}<extra></extra>"), secondary_y=False)
@@ -124,7 +128,7 @@ def opportunity_timeline(df: pd.DataFrame, selected_df: pd.DataFrame | None = No
     fig.update_yaxes(title_text="Open roles", secondary_y=False)
     fig.update_yaxes(title_text="People laid off", secondary_y=True, showgrid=False)
     fig = _style(fig, "Hiring demand and layoffs over time")
-    fig.update_layout(barmode="stack", height=350, showlegend=True, legend={"orientation": "h", "yanchor": "bottom", "y": 1.01, "xanchor": "right", "x": 1, "font": {"size": 10}}, hovermode="x unified", margin={"l": 58, "r": 58, "t": 65, "b": 55})
+    fig.update_layout(barmode="stack", height=350, showlegend=not use_brush, legend={"orientation": "h", "yanchor": "bottom", "y": 1.01, "xanchor": "right", "x": 1, "font": {"size": 10}}, hovermode="x unified", margin={"l": 58, "r": 58, "t": 65, "b": 55})
     return fig
 
 
@@ -139,21 +143,21 @@ def open_role_momentum(df: pd.DataFrame, selected_df: pd.DataFrame | None = None
         fig.add_trace(go.Bar(
             x=market["period"],
             y=market["open_role_change_pct"].fillna(0),
-            name="All market",
+            name="Open-role change",
             marker={"color": "rgba(151, 163, 185, .35)", "line": {"color": "rgba(151, 163, 185, .45)", "width": 1}},
-            hovertemplate="%{x}<br>All-market change: %{y:+.1f}%<extra></extra>",
+            hovertemplate="%{x}<br>Open-role change: %{y:+.1f}%<extra></extra>",
         ))
         selected_market = quarterly_market(selected_df).set_index("period").reindex(market["period"]).reset_index()
         selected_colors = [COLORS["muted"] if pd.isna(value) else COLORS["opportunity"] if value >= 0 else COLORS["disruption"] for value in selected_market["open_role_change_pct"]]
         fig.add_trace(go.Bar(
             x=selected_market["period"],
-            y=selected_market["open_role_change_pct"].fillna(0),
-            name="Highlighted selection",
+            y=selected_market["open_role_change_pct"],
+            name="Open-role change",
             marker={"color": selected_colors, "line": {"color": "rgba(31,41,55,.24)", "width": 0.8}},
             text=selected_market["open_role_change_pct"].map(lambda value: "" if pd.isna(value) else f"{value:+.1f}%"),
             textposition="outside",
             textfont={"size": 15, "color": COLORS["ink"]},
-            hovertemplate="%{x}<br>Highlighted change: %{y:+.1f}%<extra></extra>",
+            hovertemplate="%{x}<br>Open-role change: %{y:+.1f}%<extra></extra>",
         ))
     else:
         fig.add_trace(go.Bar(
@@ -171,7 +175,7 @@ def open_role_momentum(df: pd.DataFrame, selected_df: pd.DataFrame | None = None
     fig.update_xaxes(tickfont={"size": 12})
     fig.update_yaxes(title_text="Change in open roles (%)", ticksuffix="%", tickfont={"size": 12})
     fig = _style(fig, "Quarterly change in open roles")
-    fig.update_layout(barmode="overlay" if use_brush else "relative", height=350, showlegend=use_brush, legend={"orientation": "h", "yanchor": "bottom", "y": 1.01, "xanchor": "right", "x": 1, "font": {"size": 9}}, margin={"l": 58, "r": 20, "t": 65, "b": 55})
+    fig.update_layout(barmode="overlay" if use_brush else "relative", height=350, showlegend=False, legend={"orientation": "h", "yanchor": "bottom", "y": 1.01, "xanchor": "right", "x": 1, "font": {"size": 9}}, margin={"l": 58, "r": 20, "t": 65, "b": 55})
     return fig
 
 
@@ -690,15 +694,23 @@ def country_industry_heatmap(
             and (not selected_industry_set or industry in selected_industry_set)
             and pd.notna(value_matrix.loc[industry, country])
         ]
-        if highlight_cells:
-            fig.add_trace(go.Scatter(
-                x=[country for country, _industry in highlight_cells],
-                y=[industry for _country, industry in highlight_cells],
-                mode="markers",
-                marker={"symbol": "square-open", "size": 25, "color": COLORS["ink"], "line": {"width": 2}},
-                hoverinfo="skip",
-                showlegend=False,
-            ))
+        for country, industry in highlight_cells:
+            fig.add_shape(
+                type="rect",
+                xref="x",
+                yref="y",
+                x0=country,
+                x1=country,
+                y0=industry,
+                y1=industry,
+                x0shift=-0.5,
+                x1shift=0.5,
+                y0shift=-0.5,
+                y1shift=0.5,
+                line={"color": COLORS["ink"], "width": 2},
+                fillcolor="rgba(0,0,0,0)",
+                layer="above",
+            )
     fig.update_yaxes(autorange="reversed", title_text="")
     fig.update_xaxes(title_text="Country", side="bottom")
     fig = _style(fig, "")
