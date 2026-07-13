@@ -105,9 +105,11 @@ def filter_layoffs(
     ]
 
 
-def filter_bridge(df, years=None, quarters=None, period_range=None, industries=None, regions=None):
+def filter_bridge(df, years=None, quarters=None, period_range=None, industries=None, regions=None, salary_range=None):
     out = _periods(_years(df, years), period_range)
     for column, values in [("quarter", quarters), ("industry_norm", industries), ("region", regions)]:
         if values:
             out = out[out[column].isin(values)]
+    if salary_range and len(salary_range) == 2 and "avg_salary" in out.columns:
+        out = out[out["avg_salary"].between(*salary_range)]
     return out

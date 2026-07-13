@@ -9,6 +9,8 @@ from app.data_loader import dropdown_options, load_profile
 def layout(**_kwargs):
     profile = load_profile()
     latest_explore_period = len(APP_PERIODS) - 2
+    salary_min = int(profile.get("salary_min", 30000) // 5000 * 5000)
+    salary_max = int((profile.get("salary_max", 220000) // 5000 + 1) * 5000)
     sidebar_period_marks = {0: "2024", 4: "2025", 8: "2026"}
     filters = html.Section(
         [
@@ -17,7 +19,7 @@ def layout(**_kwargs):
                     html.Label([html.Span("Period · year and quarter", className="filter-label"), dcc.RangeSlider(id="ex-period", min=0, max=latest_explore_period, step=1, value=[0, latest_explore_period], marks=sidebar_period_marks, allowCross=False)], className="filter-control slider-control period-control"),
                     dropdown("ex-countries", "Country / comparison country", dropdown_options(profile.get("countries", [])), []),
                     dropdown("ex-industries", "Industry", dropdown_options(profile.get("industries", [])), []),
-                    html.Div([html.Span("Role: ", className="filter-note-label"), html.Strong(id="ex-role-label", children="None selected")], className="selection-note compact-selection-note"),
+                    html.Label([html.Span("Salary benchmark range", className="filter-label"), dcc.RangeSlider(id="ex-salary-range", min=salary_min, max=salary_max, step=5000, value=[salary_min, salary_max], marks={salary_min: f"${salary_min//1000}k", salary_max: f"${salary_max//1000}k"})], className="filter-control slider-control"),
                     html.Div([html.Button("Reset", id="ex-reset", n_clicks=0, className="button button-secondary"), html.Button("Continue →", id="ex-continue", n_clicks=0, className="button button-primary")], className="filter-actions compact-actions"),
                 ],
                 className="filter-grid explore-filter-grid compact-top-filter-grid",

@@ -10,16 +10,17 @@ def layout(**_kwargs):
     profile = load_profile()
     salary_min = int(profile.get("salary_min", 30000) // 5000 * 5000)
     salary_max = int((profile.get("salary_max", 220000) // 5000 + 1) * 5000)
+    latest_decision_period = len(APP_PERIODS) - 2
     sidebar_period_marks = {0: "2024", 4: "2025", 8: "2026"}
     filters = html.Section(
         [
             html.Div(
                 [
-                    html.Label([html.Span("Period · year and quarter", className="filter-label"), dcc.RangeSlider(id="de-period", min=0, max=len(APP_PERIODS) - 1, step=1, value=[0, len(APP_PERIODS) - 1], marks=sidebar_period_marks, allowCross=False)], className="filter-control slider-control period-control"),
-                    dropdown("de-industries", "Industry", dropdown_options(profile.get("industries", [])), []),
+                    html.Label([html.Span("Period · year and quarter", className="filter-label"), dcc.RangeSlider(id="de-period", min=0, max=latest_decision_period, step=1, value=[0, latest_decision_period], marks=sidebar_period_marks, allowCross=False)], className="filter-control slider-control period-control"),
                     dropdown("de-countries", "Country", dropdown_options(profile.get("countries", [])), []),
+                    dropdown("de-industries", "Industry", dropdown_options(profile.get("industries", [])), []),
                     html.Label([html.Span("Salary benchmark range", className="filter-label"), dcc.RangeSlider(id="de-salary-range", min=salary_min, max=salary_max, step=5000, value=[salary_min, salary_max], marks={salary_min: f"${salary_min//1000}k", salary_max: f"${salary_max//1000}k"})], className="filter-control slider-control"),
-                    html.Div([html.Button("Reset", id="de-reset", n_clicks=0, className="button button-secondary"), dcc.Link("← Explore", href="/explore", className="button button-primary edit-exploration-button")], className="filter-actions compact-actions"),
+                    html.Div([html.Button("Reset", id="de-reset", n_clicks=0, className="button button-secondary"), html.Button("← Explore", id="de-back-explore", n_clicks=0, className="button button-primary edit-exploration-button")], className="filter-actions compact-actions"),
                 ],
                 className="filter-grid decision-filter-grid compact-top-filter-grid",
             ),
