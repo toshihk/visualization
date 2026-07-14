@@ -8,7 +8,7 @@ import pandas as pd
 from dash import Input, Output, State, ctx, html, no_update
 from dash.exceptions import PreventUpdate
 
-from app.constants import APP_PERIODS, APP_QUARTERS, COUNTRY_TO_REGION, DEFAULT_JOURNEY, METRIC_OPTIONS
+from app.constants import APP_PERIODS, APP_QUARTERS, COUNTRY_TO_ISO3, COUNTRY_TO_REGION, DEFAULT_JOURNEY, METRIC_OPTIONS
 from app.data_loader import filter_bridge, filter_layoffs
 from app.figures import (
     company_disruption_bars,
@@ -70,6 +70,26 @@ def _salary_matched_layoffs(df: pd.DataFrame, bridge_df: pd.DataFrame, period_ra
         return df.iloc[0:0].copy()
     combos = salary_bridge[["industry_norm", "region"]].drop_duplicates()
     return df.merge(combos.assign(_salary_match=1), on=["industry_norm", "region"], how="inner").drop(columns="_salary_match")
+
+
+def _salary_country_source(bridge_df: pd.DataFrame) -> pd.DataFrame:
+    if bridge_df.empty or "avg_salary" not in bridge_df.columns:
+        return bridge_df.iloc[0:0].copy()
+    countries = pd.DataFrame(
+        [
+            {"country": country, "region": region, "iso_alpha": COUNTRY_TO_ISO3.get(country)}
+            for country, region in COUNTRY_TO_REGION.items()
+        ]
+    ).dropna(subset=["iso_alpha"])
+    salary_by_region = bridge_df.dropna(subset=["avg_salary"]).groupby("region", observed=True)["avg_salary"].mean().reset_index()
+    return countries.merge(salary_by_region, on="region", how="inner")
+
+
+def _map_metric_value(value) -> str:
+    """Keep the map on a selectable non-salary metric, defaulting to layoffs."""
+    if value in METRIC_OPTIONS and value not in {"avg_salary", "open_roles"}:
+        return value
+    return "layoffs_count"
 
 
 def _latest_period_index() -> int:
@@ -189,7 +209,7 @@ def register_callbacks(app, workforce_df, layoffs_df, bridge_df, profile):
     )
     def reset_explore_filters(_clicks):
         salary_min, salary_max = _salary_bounds(profile)
-        return [0, _latest_period_index()], [salary_min, salary_max], "open_roles", "avg_salary"
+        return [0, _latest_period_index()], [salary_min, salary_max], "layoffs_count", "avg_salary"
 
     @app.callback(
         Output("ex-period", "value", allow_duplicate=True),
@@ -215,7 +235,7 @@ def register_callbacks(app, workforce_df, layoffs_df, bridge_df, profile):
             state.get("countries", []),
             state.get("industries", []),
             role,
-            state.get("map_metric", "open_roles"),
+            _map_metric_value(state.get("map_metric", "layoffs_count")),
         )
 
     @app.callback(
@@ -236,7 +256,7 @@ def register_callbacks(app, workforce_df, layoffs_df, bridge_df, profile):
         Input("ex-selected-role", "data"),
     )
     def update_explore(period_range, salary_range, industries, countries, map_metric, benchmark_view, selected_role):
-        map_metric = map_metric or "open_roles"
+        map_metric = _map_metric_value(map_metric)
         timeline_range = [0, _latest_period_index()]
         market = _salary_matched_layoffs(filter_layoffs(layoffs_df, period_range=period_range), bridge_df, period_range, salary_range)
         highlighted_market = _salary_matched_layoffs(filter_layoffs(layoffs_df, period_range=period_range, industries=industries, countries=countries, role=selected_role), bridge_df, period_range, salary_range)
@@ -244,7 +264,8 @@ def register_callbacks(app, workforce_df, layoffs_df, bridge_df, profile):
         period_brush_active = (period_range or timeline_range) != timeline_range
         bridge = filter_bridge(bridge_df, period_range=period_range, salary_range=salary_range)
         timeline_market = _salary_matched_layoffs(filter_layoffs(layoffs_df, period_range=timeline_range), bridge_df, timeline_range, salary_range)
-        map_title = "The Global Open Roles" if map_metric == "open_roles" else f"Global {METRIC_OPTIONS.get(map_metric, map_metric)}"
+        map_source = market
+        map_title = f"Global {METRIC_OPTIONS.get(map_metric, map_metric)}"
         benchmark_labels = {
             "avg_salary": "Salary benchmark",
             "employee_satisfaction": "Employee satisfaction",
@@ -254,7 +275,7 @@ def register_callbacks(app, workforce_df, layoffs_df, bridge_df, profile):
         }
         benchmark_title = benchmark_labels.get(benchmark_view or "avg_salary", "Salary benchmark")
         selected_context = highlighted_market if highlight_active or period_brush_active else None
-        return country_map(market, map_metric, countries), map_title, opportunity_timeline(timeline_market, selected_context), open_role_momentum(timeline_market, selected_context), role_vs_industry(market, selected_role, industries), industry_layoffs_bar(market, industries), country_industry_heatmap(bridge, benchmark_view or "avg_salary", countries, industries), benchmark_title
+        return country_map(map_source, map_metric, countries), map_title, opportunity_timeline(timeline_market, selected_context), open_role_momentum(timeline_market, selected_context), role_vs_industry(market, selected_role, industries), industry_layoffs_bar(market, industries), country_industry_heatmap(bridge, benchmark_view or "avg_salary", countries, industries), benchmark_title
 
     @app.callback(
         Output("journey-state", "data"),
@@ -275,7 +296,7 @@ def register_callbacks(app, workforce_df, layoffs_df, bridge_df, profile):
         countries = countries or []
         state = dict(journey or DEFAULT_JOURNEY)
         start, end = _clamp_period_range(period_range, _latest_period_index())
-        state.update({"period_range": [start, end], "years": [2024 + int(start) // 4, 2024 + int(end) // 4], "quarters": APP_QUARTERS, "countries": countries, "regions": sorted({COUNTRY_TO_REGION[c] for c in countries if c in COUNTRY_TO_REGION}), "industries": industries or [], "selected_role": role, "map_metric": map_metric, "salary_range": salary_range})
+        state.update({"period_range": [start, end], "years": [2024 + int(start) // 4, 2024 + int(end) // 4], "quarters": APP_QUARTERS, "countries": countries, "regions": sorted({COUNTRY_TO_REGION[c] for c in countries if c in COUNTRY_TO_REGION}), "industries": industries or [], "selected_role": role, "map_metric": _map_metric_value(map_metric), "salary_range": salary_range})
         return state, "/decide"
 
     @app.callback(

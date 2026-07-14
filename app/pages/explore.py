@@ -35,8 +35,8 @@ def layout(**_kwargs):
                         [
                             html.Div(
                                 [
-                                    html.H3("The Global Open Roles", id="ex-map-title", className="chart-inline-title"),
-                                    dropdown("ex-map-metric", "", [{"label": label, "value": value} for value, label in METRIC_OPTIONS.items()], "open_roles", multi=False),
+                                    html.H3("Global Layoffs", id="ex-map-title", className="chart-inline-title"),
+                                    dropdown("ex-map-metric", "", [{"label": label, "value": value} for value, label in METRIC_OPTIONS.items() if value not in {"avg_salary", "open_roles"}], "layoffs_count", multi=False, placeholder="Metric"),
                                 ],
                                 className="chart-local-toolbar",
                             ),

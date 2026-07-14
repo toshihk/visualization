@@ -110,6 +110,7 @@ NUMERIC_LAYOFF_COLUMNS = [
 ]
 
 METRIC_OPTIONS = {
+    "avg_salary": "Salary benchmark",
     "layoffs_count": "Layoffs",
     "open_roles": "Open roles",
     "layoff_percentage": "Layoff %",
@@ -134,7 +135,7 @@ DEFAULT_JOURNEY = {
     "regions": [],
     "industries": [],
     "selected_role": None,
-    "map_metric": "open_roles",
+    "map_metric": "layoffs_count",
 }
 
 CORRELATION_PAIRS = [

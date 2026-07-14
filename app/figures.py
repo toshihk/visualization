@@ -74,6 +74,8 @@ def _colorbar_ticks(values, count: int = 5, prefix: str = "", suffix: str = "", 
 def country_map(df: pd.DataFrame, metric: str, selected_countries: list[str] | None = None) -> go.Figure:
     if df.empty:
         return empty_figure("No covered-market data matches these filters")
+    if metric not in df.columns:
+        return empty_figure("No covered-market data matches this map metric")
     aggregation = "sum" if metric in {"layoffs_count", "open_roles"} else "mean"
     grouped = df.groupby(["country", "region", "iso_alpha"], observed=True)[metric].agg(aggregation).reset_index(name="value")
     selected = set(selected_countries or [])
@@ -86,10 +88,17 @@ def country_map(df: pd.DataFrame, metric: str, selected_countries: list[str] | N
         tickvals = [5_500_000, 5_600_000, 5_700_000, 5_800_000, 5_900_000, 6_000_000]
         ticktext = ["5.5M", "5.6M", "5.7M", "5.8M", "5.9M", "6.0M"]
         colorbar.update({"tickmode": "array", "tickvals": tickvals, "ticktext": ticktext, "ticks": "outside"})
+    if metric == "avg_salary":
+        zmin, zmax = 80_000, 140_000
+        colorscale = _stepped_colorscale(["#dbeafe", "#bfdbfe", "#93c5fd", "#60a5fa", COLORS["context"]])
+        tickvals = [80_000, 95_000, 110_000, 125_000, 140_000]
+        ticktext = ["$80k", "$95k", "$110k", "$125k", "$140k"]
+        colorbar.update({"tickmode": "array", "tickvals": tickvals, "ticktext": ticktext, "ticks": "outside"})
+    value_template = "$%{z:,.0f}" if metric == "avg_salary" else "%{z:,.1f}"
     hovertemplate = (
         "<b>%{customdata[0]}</b><br>Region: %{customdata[1]}<br>"
         + METRIC_OPTIONS.get(metric, metric)
-        + ": %{z:,.1f}<extra></extra>"
+        + f": {value_template}<extra></extra>"
     )
     fig = go.Figure()
     selectedpoints = [index for index, country in enumerate(grouped["country"]) if country in selected] if selected else None
