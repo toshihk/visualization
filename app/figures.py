@@ -38,6 +38,39 @@ def empty_figure(message: str) -> go.Figure:
     return fig
 
 
+def _stepped_colorscale(colors: list[str]) -> list[list[float | str]]:
+    if not colors:
+        return [[0, "#dbeafe"], [1, "#1d4ed8"]]
+    if len(colors) == 1:
+        return [[0, colors[0]], [1, colors[0]]]
+    steps = []
+    band_width = 1 / len(colors)
+    for index, color in enumerate(colors):
+        start = index * band_width
+        end = (index + 1) * band_width
+        steps.append([start, color])
+        steps.append([end, color])
+    return steps
+
+
+def _colorbar_ticks(values, count: int = 5, prefix: str = "", suffix: str = "", compact: bool = False):
+    numeric = pd.Series(np.ravel(values)).dropna().astype(float)
+    if numeric.empty:
+        return [], []
+    minimum = float(numeric.min())
+    maximum = float(numeric.max())
+    ticks = [minimum] if minimum == maximum else np.linspace(minimum, maximum, count).tolist()
+
+    def label(value):
+        if compact and abs(value) >= 1_000_000:
+            return f"{prefix}{value / 1_000_000:.1f}M{suffix}".replace(".0M", "M")
+        if compact and abs(value) >= 1_000:
+            return f"{prefix}{value / 1_000:.0f}k{suffix}"
+        return f"{prefix}{value:,.0f}{suffix}"
+
+    return ticks, [label(value) for value in ticks]
+
+
 def country_map(df: pd.DataFrame, metric: str, selected_countries: list[str] | None = None) -> go.Figure:
     if df.empty:
         return empty_figure("No covered-market data matches these filters")
@@ -46,6 +79,13 @@ def country_map(df: pd.DataFrame, metric: str, selected_countries: list[str] | N
     selected = set(selected_countries or [])
     zmin, zmax = float(grouped["value"].min()), float(grouped["value"].max())
     colorscale = [[0, "#dbeafe"], [0.45, "#60a5fa"], [1, COLORS["context"]]]
+    colorbar = {"title": METRIC_OPTIONS.get(metric, metric)}
+    if metric == "open_roles":
+        zmin, zmax = 5_500_000, 6_000_000
+        colorscale = _stepped_colorscale(["#dbeafe", "#bfdbfe", "#93c5fd", "#60a5fa", COLORS["context"]])
+        tickvals = [5_500_000, 5_600_000, 5_700_000, 5_800_000, 5_900_000, 6_000_000]
+        ticktext = ["5.5M", "5.6M", "5.7M", "5.8M", "5.9M", "6.0M"]
+        colorbar.update({"tickmode": "array", "tickvals": tickvals, "ticktext": ticktext, "ticks": "outside"})
     hovertemplate = (
         "<b>%{customdata[0]}</b><br>Region: %{customdata[1]}<br>"
         + METRIC_OPTIONS.get(metric, metric)
@@ -62,7 +102,7 @@ def country_map(df: pd.DataFrame, metric: str, selected_countries: list[str] | N
         colorscale=colorscale,
         marker_line_color="white",
         marker_line_width=0.8,
-        colorbar_title=METRIC_OPTIONS.get(metric, metric),
+        colorbar=colorbar,
         selectedpoints=selectedpoints,
         selected={"marker": {"opacity": 1.0}},
         unselected={"marker": {"opacity": 0.18}},
@@ -72,7 +112,7 @@ def country_map(df: pd.DataFrame, metric: str, selected_countries: list[str] | N
     fig.update_layout(dragmode=False, uirevision="locked-covered-markets")
     fig.add_annotation(text="Click a country to select it", x=0.01, y=0.01, xref="paper", yref="paper", showarrow=False, font={"size": 11, "color": COLORS["muted"]}, bgcolor="rgba(255,255,255,.85)")
     fig = _style(fig, "")
-    fig.update_layout(height=370, margin={"l": 15, "r": 25, "t": 12, "b": 20})
+    fig.update_layout(height=285, margin={"l": 15, "r": 18, "t": 4, "b": 8})
     return fig
 
 
@@ -94,6 +134,7 @@ def opportunity_timeline(df: pd.DataFrame, selected_df: pd.DataFrame | None = No
             x=selected_market["period"],
             y=selected_open_roles,
             name="Open roles",
+            showlegend=True,
             marker={"color": "#a7f3d0", "line": {"color": COLORS["opportunity_dark"], "width": 2}},
             hovertemplate="%{x}<br>Open roles: %{y:,.0f}<extra></extra>",
         ), secondary_y=False)
@@ -101,6 +142,7 @@ def opportunity_timeline(df: pd.DataFrame, selected_df: pd.DataFrame | None = No
             x=market["period"],
             y=other_open_roles,
             name="Open roles",
+            showlegend=False,
             marker={"color": "rgba(151, 163, 185, .28)", "line": {"color": "rgba(151, 163, 185, .38)", "width": 1}},
             hovertemplate="%{x}<br>Open roles: %{y:,.0f}<extra></extra>",
         ), secondary_y=False)
@@ -109,6 +151,7 @@ def opportunity_timeline(df: pd.DataFrame, selected_df: pd.DataFrame | None = No
             y=other_layoffs,
             name="Layoffs",
             mode="lines+markers",
+            showlegend=False,
             line={"color": "rgba(151, 163, 185, .45)", "width": 3, "dash": "dot"},
             marker={"size": 7, "color": "rgba(151, 163, 185, .45)", "line": {"color": "white", "width": 1}},
             hovertemplate="%{x}<br>Layoffs: %{y:,.0f}<extra></extra>",
@@ -118,6 +161,7 @@ def opportunity_timeline(df: pd.DataFrame, selected_df: pd.DataFrame | None = No
             y=selected_layoffs,
             name="Layoffs",
             mode="lines+markers",
+            showlegend=True,
             line={"color": COLORS["context_dark"], "width": 4},
             marker={"size": 9, "color": COLORS["context_dark"], "line": {"color": "white", "width": 1.5}},
             hovertemplate="%{x}<br>Layoffs: %{y:,.0f}<extra></extra>",
@@ -128,7 +172,21 @@ def opportunity_timeline(df: pd.DataFrame, selected_df: pd.DataFrame | None = No
     fig.update_yaxes(title_text="Open roles", secondary_y=False)
     fig.update_yaxes(title_text="People laid off", secondary_y=True, showgrid=False)
     fig = _style(fig, "Hiring demand and layoffs over time")
-    fig.update_layout(barmode="stack", height=350, showlegend=not use_brush, legend={"orientation": "h", "yanchor": "bottom", "y": 1.01, "xanchor": "right", "x": 1, "font": {"size": 10}}, hovermode="x unified", margin={"l": 58, "r": 58, "t": 65, "b": 55})
+    fig.update_layout(
+        barmode="stack",
+        height=270,
+        showlegend=True,
+        legend={
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 0.96,
+            "xanchor": "right",
+            "x": 0.8,
+            "font": {"size": 9},
+        },
+        hovermode="x unified",
+        margin={"l": 46, "r": 46, "t": 46, "b": 0},
+    )
     return fig
 
 
@@ -156,7 +214,7 @@ def open_role_momentum(df: pd.DataFrame, selected_df: pd.DataFrame | None = None
             marker={"color": selected_colors, "line": {"color": "rgba(31,41,55,.24)", "width": 0.8}},
             text=selected_market["open_role_change_pct"].map(lambda value: "" if pd.isna(value) else f"{value:+.1f}%"),
             textposition="outside",
-            textfont={"size": 15, "color": COLORS["ink"]},
+            textfont={"size": 13, "color": COLORS["ink"]},
             hovertemplate="%{x}<br>Open-role change: %{y:+.1f}%<extra></extra>",
         ))
     else:
@@ -167,15 +225,15 @@ def open_role_momentum(df: pd.DataFrame, selected_df: pd.DataFrame | None = None
             marker_color=momentum_colors,
             text=market["change_label"],
             textposition="outside",
-            textfont={"size": 15, "color": COLORS["ink"]},
+            textfont={"size": 13, "color": COLORS["ink"]},
             customdata=np.column_stack([market["open_role_change"], market["dominant_hiring_trend"]]),
             hovertemplate="%{x}<br>Open-role change: %{customdata[0]:+,.0f} (%{y:+.1f}%)<br>Dominant hiring trend: %{customdata[1]}<extra></extra>",
         ))
     fig.add_hline(y=0, line_color="#98a2b3", line_width=1)
-    fig.update_xaxes(tickfont={"size": 12})
-    fig.update_yaxes(title_text="Change in open roles (%)", ticksuffix="%", tickfont={"size": 12})
+    fig.update_xaxes(tickfont={"size": 11})
+    fig.update_yaxes(title_text="Change in open roles (%)", ticksuffix="%", tickfont={"size": 11})
     fig = _style(fig, "Quarterly change in open roles")
-    fig.update_layout(barmode="overlay" if use_brush else "relative", height=350, showlegend=False, legend={"orientation": "h", "yanchor": "bottom", "y": 1.01, "xanchor": "right", "x": 1, "font": {"size": 9}}, margin={"l": 58, "r": 20, "t": 65, "b": 55})
+    fig.update_layout(barmode="overlay" if use_brush else "relative", height=286, showlegend=False, legend={"orientation": "h", "yanchor": "bottom", "y": 1.01, "xanchor": "right", "x": 1, "font": {"size": 9}}, margin={"l": 46, "r": 14, "t": 46, "b": 46})
     return fig
 
 
@@ -229,9 +287,9 @@ def role_vs_industry(
     max_tick = max(1_000_000, np.ceil(max_total / 1_000_000) * 1_000_000)
     tickvals = np.arange(0, max_tick + 1, 1_000_000)
     ticktext = ["0" if value == 0 else f"{int(value / 1_000_000)}M" for value in tickvals]
-    fig.update_yaxes(categoryorder="array", categoryarray=industry_order, autorange="reversed", tickfont={"size": 9}, gridcolor="#eef2f6")
-    fig.update_xaxes(range=[0, max_tick * 1.04], tickmode="array", tickvals=tickvals, ticktext=ticktext, title_text="Open roles")
-    fig = _style(fig, "<b>Top industries in demand</b><br><sup>Open roles by job role</sup>")
+    fig.update_yaxes(categoryorder="array", categoryarray=industry_order, tickmode="array", tickvals=industry_order, ticktext=industry_order, autorange="reversed", tickfont={"size": 9}, gridcolor="#eef2f6")
+    fig.update_xaxes(range=[0, max_tick * 1.04], tickmode="array", tickvals=tickvals, ticktext=ticktext, title_text="")
+    fig = _style(fig, "<span style='font-size:16px;font-weight:500'>Top industries in demand</span><br><span style='font-size:14px;font-weight:400'>Open roles by job role</span>")
     fig.update_layout(
         barmode="stack",
         bargap=0.46,
@@ -246,9 +304,10 @@ def role_vs_industry(
             "entrywidthmode": "pixels",
             "tracegroupgap": 2,
         },
-        height=210,
+        height=160,
         showlegend=False,
-        margin={"l": 82, "r": 22, "t": 58, "b": 72},
+        margin={"l": 82, "r": 18, "t": 46, "b": 12},
+        title={"font": {"size": 16}},
     )
     return fig
 
@@ -280,21 +339,21 @@ def industry_layoffs_bar(df: pd.DataFrame, selected_industries: list[str] | None
             marker={
                 "color": palette[index % len(palette)],
                 "opacity": [1.0 if not selected or industry in selected else 0.16 for industry in subset["industry_norm"]],
-                "line": {"color": "rgba(31,41,55,.25)", "width": 0.5},
+                "line": {"color": "rgba(31,41,55,.35)", "width": 0.5},
             },
             hovertemplate="<b>%{y}</b><br>Job role: " + role + "<br>Layoffs: %{x:,.0f}<extra></extra>",
         ))
-    fig.update_yaxes(categoryorder="array", categoryarray=open_order, autorange="reversed", tickfont={"size": 9}, gridcolor="#eef2f6")
-    fig.update_xaxes(range=[0, max_tick * 1.04], tickmode="array", tickvals=tickvals, ticktext=ticktext, title_text="Layoffs")
-    fig = _style(fig, "Industry layoffs")
+    fig.update_yaxes(categoryorder="array", categoryarray=open_order, tickmode="array", tickvals=open_order, ticktext=open_order, autorange="reversed", tickfont={"size": 9}, gridcolor="#eef2f6")
+    fig.update_xaxes(range=[0, max_tick * 1.04], tickmode="array", tickvals=tickvals, ticktext=ticktext, title_text="")
+    fig = _style(fig, "<span style='font-size:14px;font-weight:400;'>Industry layoffs</span>")
     fig.update_layout(
         barmode="stack",
         bargap=0.46,
-        height=238,
+        height=184,
         legend={
             "orientation": "h",
             "yanchor": "bottom",
-            "y": -1.33,
+            "y": -1.36,
             "xanchor": "left",
             "x": 0,
             "font": {"size": 8},
@@ -302,7 +361,8 @@ def industry_layoffs_bar(df: pd.DataFrame, selected_industries: list[str] | None
             "entrywidthmode": "pixels",
             "tracegroupgap": 2,
         },
-        margin={"l": 82, "r": 22, "t": 42, "b": 116},
+        margin={"l": 82, "r": 18, "t": 24, "b": 76},
+        title={"font": {"size": 10}},
     )
     return fig
 
@@ -599,6 +659,164 @@ def company_recommendation_vs_disruption(
     return fig
 
 
+def company_recommendation_scatter(
+    df: pd.DataFrame,
+    selected_company: str | None = None,
+    selected_df: pd.DataFrame | None = None,
+    x_metric: str = "open_roles",
+    salary_df: pd.DataFrame | None = None,
+) -> go.Figure:
+    metric_config = {
+        "open_roles": {"label": "Open roles", "hover": ",.0f", "suffix": "", "score_axis": False},
+        "sentiment": {"label": "Employee sentiment", "hover": ".1f", "suffix": " / 10", "score_axis": False},
+        "job_security": {"label": "Job security", "hover": ".1f", "suffix": " / 10", "score_axis": False},
+        "salary_budget_change": {"label": "Salary budget change", "hover": ".1f", "suffix": "%", "score_axis": False},
+        "ai_risk": {"label": "AI replacement risk", "hover": ".1f", "suffix": " / 10", "score_axis": False},
+        "layoff_percentage": {"label": "Layoff percentage", "hover": ".1f", "suffix": "%", "score_axis": False},
+    }
+    x_metric = x_metric if x_metric in metric_config else "open_roles"
+    x_config = metric_config[x_metric]
+    salary_lookup = pd.DataFrame()
+    if salary_df is not None and not salary_df.empty and {"industry_norm", "region", "avg_salary"}.issubset(salary_df.columns):
+        salary_lookup = (
+            salary_df.dropna(subset=["avg_salary"])
+            .groupby(["industry_norm", "region"], observed=True)["avg_salary"]
+            .mean()
+            .reset_index()
+        )
+
+    def company_scores(source: pd.DataFrame) -> pd.DataFrame:
+        recommendation_rows = recommendation_scores(source)
+        if recommendation_rows.empty:
+            return pd.DataFrame()
+        company_rows = []
+        for company, group in recommendation_rows.groupby("company_name", observed=True):
+            sample_weights = group["open_roles"].clip(lower=0)
+            total_weight = float(sample_weights.sum())
+            weighted_mean = lambda column: float(np.average(group[column], weights=sample_weights)) if total_weight > 0 else float(group[column].mean())
+            source_company = source[source["company_name"] == company]
+            avg_salary = np.nan
+            if not salary_lookup.empty and {"industry_norm", "region"}.issubset(source_company.columns):
+                salary_matches = (
+                    source_company[["industry_norm", "region"]]
+                    .drop_duplicates()
+                    .merge(salary_lookup, on=["industry_norm", "region"], how="left")
+                )
+                avg_salary = float(salary_matches["avg_salary"].mean()) if salary_matches["avg_salary"].notna().any() else np.nan
+            company_rows.append({
+                "company_name": company,
+                "open_roles": total_weight,
+                "avg_salary": avg_salary,
+                "disruption_index": weighted_mean("disruption_index"),
+                "recommendation_score": weighted_mean("recommendation_score"),
+                "layoff_percentage": weighted_mean("layoff_percentage"),
+                "sentiment": weighted_mean("sentiment"),
+                "job_security": weighted_mean("job_security"),
+                "salary_budget_change": weighted_mean("salary_budget_change"),
+                "ai_risk": weighted_mean("ai_risk"),
+                "country": ", ".join(sorted(group["country"].dropna().astype(str).unique())[:2]),
+                "industry_norm": ", ".join(sorted(group["industry_norm"].dropna().astype(str).unique())[:2]),
+            })
+        return pd.DataFrame(company_rows)
+
+    scores = company_scores(df)
+    if scores.empty:
+        return empty_figure("No company recommendation comparison matches these filters")
+    selected_scores = company_scores(selected_df) if selected_df is not None and not selected_df.empty else pd.DataFrame()
+    selected_company_scores = selected_scores.set_index("company_name") if not selected_scores.empty else pd.DataFrame()
+    selected_companies = set(selected_company_scores.index) if not selected_company_scores.empty else set()
+    if selected_companies:
+        scores = scores.set_index("company_name")
+        for column in ["open_roles", "avg_salary", "disruption_index", "recommendation_score", "layoff_percentage", "sentiment", "job_security", "salary_budget_change", "ai_risk", "country", "industry_norm"]:
+            scores.loc[scores.index.intersection(selected_company_scores.index), column] = selected_company_scores[column]
+        scores = scores.reset_index()
+    scores = scores.dropna(subset=[x_metric, "recommendation_score", "disruption_index"])
+    if scores.empty:
+        return empty_figure("No company recommendation comparison matches this metric")
+    highlight_active = bool(selected_company or selected_companies)
+    highlight_mask = [
+        (not selected_company or company == selected_company) and (not selected_companies or company in selected_companies)
+        for company in scores["company_name"]
+    ]
+    score_min = float(scores["disruption_index"].min())
+    score_max = float(scores["disruption_index"].max())
+    color_padding = max((score_max - score_min) * 0.08, 1)
+    x_min = float(scores[x_metric].min())
+    x_max = float(scores[x_metric].max())
+    x_padding = max((x_max - x_min) * 0.16, 1 if not x_config["score_axis"] else 3)
+    y_min = float(scores["recommendation_score"].min())
+    y_max = float(scores["recommendation_score"].max())
+    y_padding = max((y_max - y_min) * 0.18, 3)
+    customdata = np.column_stack([
+        scores["company_name"],
+        scores["recommendation_score"],
+        scores["disruption_index"],
+        scores["open_roles"],
+        scores["layoff_percentage"],
+        scores["country"],
+        scores["industry_norm"],
+    ])
+    x_hover = x_config["hover"]
+    x_suffix = x_config["suffix"]
+    fig = go.Figure(go.Scatter(
+        x=scores[x_metric],
+        y=scores["recommendation_score"],
+        mode="markers",
+        marker={
+            "size": 13,
+            "color": scores["disruption_index"],
+            "colorscale": [[0, COLORS["opportunity"]], [0.55, COLORS["transition"]], [1, COLORS["disruption"]]],
+            "cmin": max(0, score_min - color_padding),
+            "cmax": min(100, score_max + color_padding),
+            "opacity": [1.0 if not highlight_active or selected else 0.18 for selected in highlight_mask],
+            "line": {"color": "white", "width": 1.2},
+            "colorbar": {"title": "AI disruption", "thickness": 10, "len": 0.72},
+        },
+        customdata=customdata,
+        hovertemplate=(
+            "<b>%{customdata[0]}</b><br>Recommendation: %{customdata[1]:.1f} / 100"
+            f"<br>{x_config['label']}: %{{x:{x_hover}}}{x_suffix}"
+            "<br>AI disruption: %{customdata[2]:.1f} / 100"
+            "<br>Open roles: %{customdata[3]:,.0f}"
+            "<br>Average layoff percentage: %{customdata[4]:.1f}%"
+            "<br>Country: %{customdata[5]}"
+            "<br>Industry: %{customdata[6]}<extra></extra>"
+        ),
+    ))
+    if len(scores) >= 2 and scores[x_metric].nunique() >= 2:
+        x_values = scores[x_metric].astype(float).to_numpy()
+        y_values = scores["recommendation_score"].astype(float).to_numpy()
+        slope, intercept = np.polyfit(x_values, y_values, 1)
+        trend_x = np.linspace(x_values.min(), x_values.max(), 80)
+        trend_y = slope * trend_x + intercept
+        fig.add_trace(go.Scatter(
+            x=trend_x,
+            y=trend_y,
+            mode="lines",
+            name="Trend",
+            line={"color": COLORS["ink"], "width": 2, "dash": "dash"},
+            hovertemplate=f"{x_config['label']}: %{{x:{x_hover}}}{x_suffix}<br>Trend recommendation: %{{y:.1f}} / 100<extra></extra>",
+        ))
+    fig.add_hline(y=50, line_dash="dash", line_color="rgba(100,116,139,.55)", line_width=1)
+    if x_config["score_axis"]:
+        fig.add_vline(x=50, line_dash="dash", line_color="rgba(100,116,139,.55)", line_width=1)
+    fig.add_annotation(
+        text="Higher recommendation",
+        x=max(0, x_min - x_padding) if x_config["score_axis"] else x_min - x_padding,
+        y=min(100, y_max + y_padding),
+        xanchor="left",
+        yanchor="top",
+        showarrow=False,
+        font={"size": 11, "color": COLORS["opportunity_dark"]},
+    )
+    x_range = [max(0, x_min - x_padding), min(100, x_max + x_padding)] if x_config["score_axis"] else [x_min - x_padding, x_max + x_padding]
+    fig.update_xaxes(title_text=x_config["label"], range=x_range)
+    fig.update_yaxes(title_text="Recommendation score", range=[max(0, y_min - y_padding), min(100, y_max + y_padding)])
+    fig = _style(fig, f"Recommendation vs {x_config['label']}")
+    fig.update_layout(height=520, showlegend=False, margin={"l": 62, "r": 72, "t": 72, "b": 62})
+    return fig
+
+
 def company_disruption_bars(
     df: pd.DataFrame,
     selected_company: str | None = None,
@@ -742,6 +960,15 @@ def country_industry_heatmap(
         )
     )
     metric_label = metric_labels[metric]
+    heat_colorscale = [[0, "#dbeafe"], [0.5, "#60a5fa"], [1, "#1d4ed8"]]
+    heat_colorbar = {"title": metric_label}
+    heat_cmin = heat_cmax = None
+    if metric == "avg_salary":
+        heat_colorscale = _stepped_colorscale(["#dbeafe", "#bfdbfe", "#93c5fd", "#60a5fa", "#1d4ed8"])
+        heat_cmin, heat_cmax = 80_000, 140_000
+        tickvals = [80_000, 95_000, 110_000, 125_000, 140_000]
+        ticktext = ["$80k", "$95k", "$110k", "$125k", "$140k"]
+        heat_colorbar.update({"tickmode": "array", "tickvals": tickvals, "ticktext": ticktext, "ticks": "outside"})
     fig = go.Figure(go.Heatmap(
         z=value_matrix.to_numpy(),
         x=countries,
@@ -749,11 +976,14 @@ def country_industry_heatmap(
         text=value_labels.to_numpy(),
         texttemplate="%{text}",
         customdata=region_matrix.to_numpy(),
-        colorscale=[[0, "#dbeafe"], [0.5, "#60a5fa"], [1, "#1d4ed8"]],
+        colorscale=heat_colorscale,
+        zmin=heat_cmin,
+        zmax=heat_cmax,
         xgap=2,
         ygap=2,
-        colorbar={"title": metric_label},
+        colorbar=heat_colorbar,
         hovertemplate="<b>%{y} · %{x}</b><br>" + metric_label + ": %{text}<br>Source region: %{customdata}<extra></extra>",
+        textfont={"size": 12},
     ))
     if selected_country_set or selected_industry_set:
         highlight_cells = [
@@ -781,12 +1011,12 @@ def country_industry_heatmap(
                 fillcolor="rgba(0,0,0,0)",
                 layer="above",
             )
-    fig.update_yaxes(autorange="reversed", title_text="")
-    fig.update_xaxes(title_text="Country", side="bottom")
+    fig.update_yaxes(autorange="reversed", title_text="", tickfont={"size": 10})
+    fig.update_xaxes(title_text="", showticklabels=True, tickfont={"size": 10}, side="bottom")
     fig = _style(fig, "")
     fig.update_layout(
-        height=350,
-        margin={"l": 72, "r": 48, "t": 32, "b": 55},
+        height=240,
+        margin={"l": 64, "r": 44, "t": 8, "b": 38},
     )
     return fig
 
@@ -795,21 +1025,22 @@ def signal_cloud(df: pd.DataFrame) -> go.Figure:
     if df.empty:
         return empty_figure("No layoff reasons match these filters")
     tokens = df["reason_for_layoffs"].dropna().astype(str).tolist()
-    counts = Counter(tokens).most_common(28)
+    counts = Counter(tokens).most_common(24)
     if not counts:
         return empty_figure("No layoff reasons are available")
     words, values = zip(*counts)
     theta = np.arange(len(words)) * 2.39996
     radius = 0.42 * np.sqrt(np.arange(len(words)) + 1)
-    sizes = 15 + 31 * (np.array(values) / max(values))
+    sizes = 11 + 22 * (np.array(values) / max(values))
     palette = [COLORS["disruption"], COLORS["transition"], COLORS["context"], COLORS["disruption_dark"]]
     colors = [palette[index % len(palette)] for index, _word in enumerate(words)]
     x_values = radius * np.cos(theta)
     y_values = radius * np.sin(theta)
     fig = go.Figure(go.Scatter(x=x_values, y=y_values, mode="text", text=words, textfont={"size": sizes, "color": colors}, customdata=values, cliponaxis=False, hovertemplate="%{text}<br>Occurrences: %{customdata:,}<extra></extra>"))
-    extent = max(float(np.max(np.abs(x_values))), float(np.max(np.abs(y_values))), 1.0) + 0.9
-    fig.update_xaxes(visible=False, range=[-extent, extent])
-    fig.update_yaxes(visible=False, range=[-extent, extent], scaleanchor="x", scaleratio=1)
+    x_extent = max(float(np.max(np.abs(x_values))), 1.0) + 0.3
+    y_extent = max(float(np.max(np.abs(y_values))), 1.0) + 0.2
+    fig.update_xaxes(visible=False, range=[-x_extent, x_extent])
+    fig.update_yaxes(visible=False, range=[-y_extent, y_extent])
     fig = _style(fig, "Reasons for layoffs · frequency cloud")
-    fig.update_layout(height=300, margin={"l": 60, "r": 60, "t": 58, "b": 38})
+    fig.update_layout(height=330, margin={"l": 18, "r": 18, "t": 46, "b": 12})
     return fig

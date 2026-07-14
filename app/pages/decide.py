@@ -29,7 +29,6 @@ def layout(**_kwargs):
     )
     analysis = html.Div(
         [
-            html.Section(id="de-kpis", className="kpi-grid four-up"),
             html.Div(
                 [
                     disruption_methodology(),
@@ -42,14 +41,36 @@ def layout(**_kwargs):
                     html.Div(
                         [
                             html.Div(dcc.Graph(id="de-company-scatter", config={"displayModeBar": False}, responsive=True, className="decision-stack-graph"), className="viz-card decision-stack-card"),
-                            html.Div(dcc.Graph(id="de-disruption-company", config={"displayModeBar": False}, responsive=True, className="decision-stack-graph"), className="viz-card decision-stack-card"),
+                            html.Div(
+                                [
+                                    html.Div(dropdown("de-disruption-scope", "Compare disruption by", [{"label": "Industry", "value": "industry_norm"}, {"label": "Country", "value": "country"}], "industry_norm", multi=False), className="chart-local-toolbar"),
+                                    dcc.Graph(id="de-disruption-segment", config={"displayModeBar": False}, responsive=True, className="decision-stack-graph"),
+                                ],
+                                className="viz-card decision-stack-card chart-with-control",
+                            ),
                         ],
                         className="decision-left-stack",
                     ),
                     html.Div(
                         [
-                            html.Div(dropdown("de-disruption-scope", "Compare disruption by", [{"label": "Industry", "value": "industry_norm"}, {"label": "Country", "value": "country"}], "industry_norm", multi=False), className="chart-local-toolbar"),
-                            dcc.Graph(id="de-disruption-segment", config={"displayModeBar": False}, responsive=True, className="decision-bubble-graph"),
+                            html.Div(
+                                dropdown(
+                                    "de-scatter-x-metric",
+                                    "X axis",
+                                    [
+                                        {"label": "Open roles", "value": "open_roles"},
+                                        {"label": "Sentiment", "value": "sentiment"},
+                                        {"label": "Job security", "value": "job_security"},
+                                        {"label": "Salary budget change", "value": "salary_budget_change"},
+                                        {"label": "AI replacement risk", "value": "ai_risk"},
+                                        {"label": "Layoff percentage", "value": "layoff_percentage"},
+                                    ],
+                                    "open_roles",
+                                    multi=False,
+                                ),
+                                className="chart-local-toolbar",
+                            ),
+                            dcc.Graph(id="de-company-scatter-focus", config={"displayModeBar": False}, responsive=True, className="decision-bubble-graph"),
                         ],
                         className="viz-card chart-with-control decision-bubble-card",
                     ),
@@ -68,7 +89,13 @@ def layout(**_kwargs):
                     )
                 ]
             ),
-            html.Section([html.Div(dcc.Graph(id="de-signal-cloud", config={"displayModeBar": False}, responsive=True, style={"height": "300px"}), className="viz-card wide-card signal-cloud-card")]),
+            html.Section(
+                [
+                    html.Div(dcc.Graph(id="de-disruption-company", config={"displayModeBar": False}, responsive=True, className="decision-bottom-graph"), className="viz-card decision-bottom-card"),
+                    html.Div(dcc.Graph(id="de-signal-cloud", config={"displayModeBar": False}, responsive=True, className="decision-bottom-cloud"), className="viz-card signal-cloud-card decision-bottom-card"),
+                ],
+                className="dashboard-grid decision-bottom-grid",
+            ),
         ],
         className="decision-main",
     )

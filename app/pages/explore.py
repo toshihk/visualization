@@ -29,7 +29,6 @@ def layout(**_kwargs):
     )
     analysis = html.Div(
         [
-            html.Section(id="ex-kpis", className="kpi-grid four-up"),
             html.Section(
                 [
                     html.Div(
